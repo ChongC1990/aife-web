@@ -343,6 +343,7 @@ async function runInspect() {
   btnText.textContent = '检测中...';
   document.getElementById('errorToast').style.display = 'none';
 
+  const t0 = Date.now();
   try {
     const formData = new FormData();
     formData.append('image', selectedFile);
@@ -350,9 +351,10 @@ async function runInspect() {
     const resp = await fetch('/api/inspect', { method: 'POST', body: formData });
     if (!resp.ok) throw new Error('服务器错误 ' + resp.status);
     const data = await resp.json();
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's';
 
     if (data.error) throw new Error(data.error);
-    showResult(data, selectedFile.name);
+    showResult(data, selectedFile.name, elapsed);
 
     // 记录历史
     history.unshift({ name: selectedFile.name, result: data.result, defect: data.defect_type, time: new Date().toLocaleTimeString('zh-CN') });
@@ -371,7 +373,7 @@ async function runInspect() {
   }
 }
 
-function showResult(data, filename) {
+function showResult(data, filename, elapsed) {
   const isGood = data.result === 'GOOD';
   const card   = document.getElementById('resultCard');
   const header = document.getElementById('resultHeader');
@@ -396,8 +398,8 @@ function showResult(data, filename) {
       <div class="metric-value">约 ${obs.x_range_mm || '-'} mm</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">检测模型</div>
-      <div class="metric-value" style="font-size:13px">Gemini Flash</div>
+      <div class="metric-label">检测耗时</div>
+      <div class="metric-value" style="font-size:13px">${elapsed || '-'}</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">文件名</div>
