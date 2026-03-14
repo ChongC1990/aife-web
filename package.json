@@ -1,0 +1,11 @@
+{
+  "name": "aife-web",
+  "version": "1.0.0",
+  "description": "AiFE 轮辋螺栓压装曲线 AI 视觉检测 Web 服务",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": { "node": ">=18" }
+}

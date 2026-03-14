@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AiFE · 压装曲线检测</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+  }
+
+  header {
+    background: linear-gradient(135deg, #1a2332 0%, #0d1117 100%);
+    border-bottom: 1px solid #21262d;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header .logo { font-size: 28px; }
+  header h1 { font-size: 20px; font-weight: 600; color: #58a6ff; }
+  header p  { font-size: 13px; color: #8b949e; margin-top: 2px; }
+
+  .container { max-width: 900px; margin: 40px auto; padding: 0 24px; }
+
+  /* 上传区 */
+  .upload-zone {
+    border: 2px dashed #30363d;
+    border-radius: 12px;
+    padding: 60px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: #161b22;
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: #58a6ff;
+    background: #1c2537;
+  }
+  .upload-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .upload-icon { font-size: 56px; margin-bottom: 16px; }
+  .upload-zone h2 { font-size: 18px; color: #c9d1d9; margin-bottom: 8px; }
+  .upload-zone p  { font-size: 14px; color: #8b949e; }
+  .upload-hint    { font-size: 12px; color: #6e7681; margin-top: 8px; }
+
+  /* 预览 */
+  .preview-box {
+    display: none;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .preview-box img {
+    width: 100%;
+    max-height: 420px;
+    object-fit: contain;
+    background: #0d1117;
+    padding: 16px;
+  }
+  .preview-actions {
+    padding: 16px 20px;
+    display: flex;
+    gap: 12px;
+    border-top: 1px solid #21262d;
+    align-items: center;
+  }
+  .preview-filename { font-size: 13px; color: #8b949e; flex: 1; }
+
+  /* 按钮 */
+  .btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:hover { background: #2ea043; }
+  .btn-primary:disabled { background: #1a3329; color: #3d6b44; cursor: not-allowed; }
+  .btn-secondary { background: #21262d; color: #c9d1d9; }
+  .btn-secondary:hover { background: #30363d; }
+
+  /* 加载动画 */
+  .spinner {
+    display: none;
+    width: 18px; height: 18px;
+    border: 2px solid #ffffff30;
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 结果卡片 */
+  .result-card {
+    display: none;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 28px;
+    border: 1px solid #30363d;
+  }
+
+  .result-header {
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .result-header.good { background: linear-gradient(135deg, #0f2a1a, #122a1e); border-bottom: 1px solid #1f4e2e; }
+  .result-header.bad  { background: linear-gradient(135deg, #2a0f0f, #2a141a); border-bottom: 1px solid #4e1f1f; }
+
+  .verdict-icon { font-size: 44px; line-height: 1; }
+  .verdict-text h2 { font-size: 22px; font-weight: 700; }
+  .good .verdict-text h2 { color: #3fb950; }
+  .bad  .verdict-text h2 { color: #f85149; }
+  .verdict-text .defect { font-size: 13px; margin-top: 4px; }
+  .good .defect { color: #56d364; }
+  .bad  .defect { color: #ff7b72; }
+
+  .confidence-badge {
+    margin-left: auto;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .good .confidence-badge { background: #1a3d28; color: #3fb950; }
+  .bad  .confidence-badge { background: #3d1a1a; color: #f85149; }
+
+  .result-body {
+    background: #161b22;
+    padding: 24px;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .metric-card {
+    background: #21262d;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .metric-label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .metric-value { font-size: 18px; font-weight: 600; color: #e6edf3; }
+  .metric-value.ok  { color: #3fb950; }
+  .metric-value.err { color: #f85149; }
+
+  .analysis-box {
+    background: #21262d;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .analysis-box h4 { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .analysis-box p  { font-size: 14px; color: #c9d1d9; line-height: 1.7; }
+
+  .rec-box {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-left: 3px solid;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+  }
+  .good .rec-box { border-left-color: #3fb950; }
+  .bad  .rec-box { border-left-color: #f85149; }
+  .rec-box p { font-size: 13px; color: #c9d1d9; }
+
+  /* 历史记录 */
+  .history-section { margin-top: 48px; }
+  .history-section h3 { font-size: 16px; color: #8b949e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #21262d; }
+  .history-list { display: flex; flex-direction: column; gap: 8px; }
+  .history-item {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .history-item .hi-icon { font-size: 20px; }
+  .history-item .hi-name { flex: 1; color: #c9d1d9; }
+  .history-item .hi-result { font-weight: 600; }
+  .history-item .hi-result.good { color: #3fb950; }
+  .history-item .hi-result.bad  { color: #f85149; }
+  .history-item .hi-time { color: #6e7681; font-size: 12px; }
+
+  .error-toast {
+    display: none;
+    background: #2a0f0f;
+    border: 1px solid #4e1f1f;
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: #f85149;
+    font-size: 14px;
+    margin-top: 16px;
+  }
+
+  /* 响应式 */
+  @media (max-width: 600px) {
+    .container { padding: 0 16px; }
+    .upload-zone { padding: 40px 16px; }
+    header { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔍</div>
+  <div>
+    <h1>AiFE 压装曲线智能检测</h1>
+    <p>轮辋螺栓压装工艺 · AI 视觉质检系统</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 上传区 -->
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept="image/*">
+    <div class="upload-icon">📸</div>
+    <h2>上传压装曲线图片</h2>
+    <p>点击选择图片，或直接拖拽到此处</p>
+    <p class="upload-hint">支持 JPG / PNG，建议分辨率 800px 以上</p>
+  </div>
+
+  <!-- 预览 -->
+  <div class="preview-box" id="previewBox">
+    <img id="previewImg" alt="预览">
+    <div class="preview-actions">
+      <span class="preview-filename" id="previewName"></span>
+      <button class="btn btn-secondary" onclick="resetUI()">重新选择</button>
+      <button class="btn btn-primary" id="inspectBtn" onclick="runInspect()">
+        <div class="spinner" id="spinner"></div>
+        <span id="btnText">🚀 开始检测</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 错误提示 -->
+  <div class="error-toast" id="errorToast"></div>
+
+  <!-- 结果卡片 -->
+  <div class="result-card" id="resultCard">
+    <div class="result-header" id="resultHeader">
+      <div class="verdict-icon" id="verdictIcon"></div>
+      <div class="verdict-text">
+        <h2 id="verdictText"></h2>
+        <div class="defect" id="defectText"></div>
+      </div>
+      <div class="confidence-badge" id="confBadge"></div>
+    </div>
+    <div class="result-body">
+      <div class="metrics-grid" id="metricsGrid"></div>
+      <div class="analysis-box">
+        <h4>💬 分析过程</h4>
+        <p id="analysisText"></p>
+      </div>
+      <div class="rec-box" id="recBox">
+        <p id="recText"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史记录 -->
+  <div class="history-section" id="historySection" style="display:none">
+    <h3>检测历史</h3>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+</div>
+
+<script>
+let selectedFile = null;
+let history = JSON.parse(localStorage.getItem('aife_history') || '[]');
+
+// ── 拖拽支持 ──
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) handleFile(file);
+});
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('previewImg').src = ev.target.result;
+    document.getElementById('previewName').textContent = file.name + '  (' + (file.size / 1024).toFixed(0) + ' KB)';
+    document.getElementById('uploadZone').style.display = 'none';
+    document.getElementById('previewBox').style.display = 'block';
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('errorToast').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetUI() {
+  selectedFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('uploadZone').style.display = 'block';
+  document.getElementById('previewBox').style.display = 'none';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('errorToast').style.display = 'none';
+}
+
+async function runInspect() {
+  if (!selectedFile) return;
+
+  const btn = document.getElementById('inspectBtn');
+  const spinner = document.getElementById('spinner');
+  const btnText = document.getElementById('btnText');
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = '检测中...';
+  document.getElementById('errorToast').style.display = 'none';
+
+  try {
+    const formData = new FormData();
+    formData.append('image', selectedFile);
+
+    const resp = await fetch('/api/inspect', { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error('服务器错误 ' + resp.status);
+    const data = await resp.json();
+
+    if (data.error) throw new Error(data.error);
+    showResult(data, selectedFile.name);
+
+    // 记录历史
+    history.unshift({ name: selectedFile.name, result: data.result, defect: data.defect_type, time: new Date().toLocaleTimeString('zh-CN') });
+    if (history.length > 10) history = history.slice(0, 10);
+    localStorage.setItem('aife_history', JSON.stringify(history));
+    renderHistory();
+
+  } catch (e) {
+    const toast = document.getElementById('errorToast');
+    toast.textContent = '❌ 检测失败：' + e.message;
+    toast.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = '🚀 重新检测';
+  }
+}
+
+function showResult(data, filename) {
+  const isGood = data.result === 'GOOD';
+  const card   = document.getElementById('resultCard');
+  const header = document.getElementById('resultHeader');
+
+  header.className = 'result-header ' + (isGood ? 'good' : 'bad');
+  card.className   = 'result-card ' + (isGood ? 'good' : 'bad');
+
+  document.getElementById('verdictIcon').textContent = isGood ? '✅' : '❌';
+  document.getElementById('verdictText').textContent = isGood ? '合格（GOOD）' : '不合格（BAD）';
+  document.getElementById('defectText').textContent  = data.defect_type ? '缺陷类型：' + data.defect_type : '无缺陷';
+  document.getElementById('confBadge').textContent   = '置信度 ' + Math.round((data.confidence || 0) * 100) + '%';
+
+  // 指标卡
+  const obs = data.obs || {};
+  document.getElementById('metricsGrid').innerHTML = `
+    <div class="metric-card">
+      <div class="metric-label">复位按钮左侧数值</div>
+      <div class="metric-value ${obs.reset_left_value === '10000' ? 'err' : 'ok'}">${obs.reset_left_value || '-'}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">X轴行程</div>
+      <div class="metric-value">约 ${obs.x_range_mm || '-'} mm</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">检测模型</div>
+      <div class="metric-value" style="font-size:13px">Gemini Flash</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">文件名</div>
+      <div class="metric-value" style="font-size:12px;word-break:break-all">${filename}</div>
+    </div>
+  `;
+
+  document.getElementById('analysisText').textContent = data.analysis || '无详细分析';
+  document.getElementById('recText').textContent      = '💡 ' + (data.recommendation || '无建议');
+
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderHistory() {
+  if (!history.length) return;
+  document.getElementById('historySection').style.display = 'block';
+  document.getElementById('historyList').innerHTML = history.map(h => `
+    <div class="history-item">
+      <span class="hi-icon">${h.result === 'GOOD' ? '✅' : '❌'}</span>
+      <span class="hi-name">${h.name}</span>
+      <span class="hi-result ${h.result === 'GOOD' ? 'good' : 'bad'}">${h.result === 'GOOD' ? '合格' : (h.defect || '不合格')}</span>
+      <span class="hi-time">${h.time}</span>
+    </div>
+  `).join('');
+}
+
+// 初始化历史
+renderHistory();
+</script>
+</body>
+</html>
